@@ -14,7 +14,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from .api import (
     IntegrationBlueprintApiClient,
     IntegrationBlueprintApiClientAuthenticationError,
-    IntegrationBlueprintApiClientError,
+    AnimeFlvApiClientError,
 )
 from .const import DOMAIN, LOGGER
 
@@ -45,5 +45,5 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
             return await self.client.async_get_data()
         except IntegrationBlueprintApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(exception) from exception
-        except IntegrationBlueprintApiClientError as exception:
+        except AnimeFlvApiClientError as exception:
             raise UpdateFailed(exception) from exception
