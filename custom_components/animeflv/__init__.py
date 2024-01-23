@@ -16,8 +16,8 @@ from .coordinator import BlueprintDataUpdateCoordinator
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
-    Platform.BINARY_SENSOR,
-    Platform.SWITCH,
+    #Platform.BINARY_SENSOR,
+    #Platform.SWITCH,
 ]
 
 
@@ -30,6 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         client=IntegrationBlueprintApiClient(
             username=entry.data[CONF_USERNAME],
             password=entry.data[CONF_PASSWORD],
+            hass=hass,
             session=async_get_clientsession(hass),
         ),
     )
