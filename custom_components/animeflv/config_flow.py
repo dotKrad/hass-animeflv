@@ -8,13 +8,15 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
+
+
 from .api import (
     IntegrationBlueprintApiClient,
     IntegrationBlueprintApiClientAuthenticationError,
     IntegrationBlueprintApiClientCommunicationError,
     AnimeFlvApiClientError,
 )
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, DEFAULT_CONF_PASSWORD, DEFAULT_CONF_USERNAME
 
 try:
     from .secrets import DEFAULT_CONF_PASSWORD, DEFAULT_CONF_USERNAME
