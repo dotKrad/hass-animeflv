@@ -2,7 +2,7 @@
   "domain": "animeflv",
   "name": "AnimeFLV",
   "codeowners": [
-    "@ludeeus"
+    "@dotKrad"
   ],
   "config_flow": true,
   "documentation": "https://github.com/ludeeus/integration_blueprint",
