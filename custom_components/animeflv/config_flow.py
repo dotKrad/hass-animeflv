@@ -11,9 +11,9 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 
 from .api import (
-    IntegrationBlueprintApiClient,
-    IntegrationBlueprintApiClientAuthenticationError,
-    IntegrationBlueprintApiClientCommunicationError,
+    AnimeFlvApiClient,
+    AnimeFlvApiClientAuthenticationError,
+    AnimeFlvApiClientCommunicationError,
     AnimeFlvApiClientError,
 )
 from .const import DOMAIN, LOGGER, DEFAULT_CONF_PASSWORD, DEFAULT_CONF_USERNAME
@@ -41,10 +41,10 @@ class BlueprintFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     username=user_input[CONF_USERNAME],
                     password=user_input[CONF_PASSWORD],
                 )
-            except IntegrationBlueprintApiClientAuthenticationError as exception:
+            except AnimeFlvApiClientAuthenticationError as exception:
                 LOGGER.warning(exception)
                 self._errors["base"] = "auth"
-            except IntegrationBlueprintApiClientCommunicationError as exception:
+            except AnimeFlvApiClientCommunicationError as exception:
                 LOGGER.error(exception)
                 self._errors["base"] = "connection"
             except AnimeFlvApiClientError as exception:
@@ -77,10 +77,5 @@ class BlueprintFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _test_credentials(self, username: str, password: str) -> None:
         """Validate credentials."""
-        client = IntegrationBlueprintApiClient(
-            username=username,
-            password=password,
-            hass = self.hass,
-            session=async_create_clientsession(self.hass),
-        )
+        client = AnimeFlvApiClient(username=username,password=password,hass = self.hass)
         return await client.async_login()

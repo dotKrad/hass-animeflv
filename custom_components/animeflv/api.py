@@ -14,28 +14,27 @@ class AnimeFlvApiClientError(Exception):
     """Exception to indicate a general API error."""
 
 
-class IntegrationBlueprintApiClientCommunicationError(
+class AnimeFlvApiClientCommunicationError(
     AnimeFlvApiClientError
 ):
     """Exception to indicate a communication error."""
 
 
-class IntegrationBlueprintApiClientAuthenticationError(
+class AnimeFlvApiClientAuthenticationError(
     AnimeFlvApiClientError
 ):
     """Exception to indicate an authentication error."""
 
 ANIMEFLV_HOST = "https://www3.animeflv.net"
 
-class IntegrationBlueprintApiClient:
+class AnimeFlvApiClient:
     """Sample API Client."""
 
     def __init__(
         self,
         username: str,
         password: str,
-        hass,
-        session: aiohttp.ClientSession,
+        hass
     ) -> None:
         """Sample API Client."""
         self._username = username
@@ -80,13 +79,13 @@ class IntegrationBlueprintApiClient:
 
         response = await self.post(url, data)
         if response.status_code != 200:
-            raise IntegrationBlueprintApiClientAuthenticationError("Invalid credentials")
+            raise AnimeFlvApiClientAuthenticationError("Invalid credentials")
 
         html = response.text
         startProfile = int(html.find("perfil",0, len(html)))
 
         if(startProfile <= 0): #profile not found
-            raise IntegrationBlueprintApiClientAuthenticationError("Invalid credentials")
+            raise AnimeFlvApiClientAuthenticationError("Invalid credentials")
 
         endProfile = int(html.find('"', startProfile, len(html)))
 
@@ -94,6 +93,10 @@ class IntegrationBlueprintApiClient:
         self._profile = profile
         print(profile)
         return profile
+
+
+
+
 
 
 
@@ -130,18 +133,18 @@ class IntegrationBlueprintApiClient:
                     json=data,
                 )
                 if response.status in (401, 403):
-                    raise IntegrationBlueprintApiClientAuthenticationError(
+                    raise AnimeFlvApiClientAuthenticationError(
                         "Invalid credentials",
                     )
                 response.raise_for_status()
                 return await response.json()
 
         except asyncio.TimeoutError as exception:
-            raise IntegrationBlueprintApiClientCommunicationError(
+            raise AnimeFlvApiClientCommunicationError(
                 "Timeout error fetching information",
             ) from exception
         except (aiohttp.ClientError, socket.gaierror) as exception:
-            raise IntegrationBlueprintApiClientCommunicationError(
+            raise AnimeFlvApiClientCommunicationError(
                 "Error fetching information",
             ) from exception
         except Exception as exception:  # pylint: disable=broad-except
