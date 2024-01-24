@@ -7,7 +7,9 @@ import socket
 import aiohttp
 import async_timeout
 
+import datetime
 import cloudscraper
+from bs4 import BeautifulSoup
 
 
 class AnimeFlvApiClientError(Exception):
@@ -42,6 +44,7 @@ class AnimeFlvApiClient:
         self._hass = hass
         self._session = None
         self._profile = None
+        self._animes = {}
 
 
     async def _getSession(self) -> any:
@@ -69,7 +72,7 @@ class AnimeFlvApiClient:
         return response
 
     async def async_login(self) -> any:
-        session = await self._getSession()
+        await self.async_logout()
         url = f"{ANIMEFLV_HOST}/auth/sign_in"
         data = {
 			"email" : self._username,
@@ -91,21 +94,130 @@ class AnimeFlvApiClient:
 
         profile = html[startProfile + 7: endProfile]
         self._profile = profile
-        print(profile)
         return profile
 
-
-
-
+    async def async_logout(self):
+        url = f"{ANIMEFLV_HOST}/auth/sign_out";
+        response = await self.get(url)
+        #if response.status_code == 200:
+        #    html = response.text
 
 
 
 
     async def async_get_data(self) -> any:
-        """Get data from the API."""
-        return await self._api_wrapper(
-            method="get", url="https://jsonplaceholder.typicode.com/posts/1"
-        )
+
+        await self.async_login()
+
+        profile = self._profile
+        if profile != "":
+            url = f"{ANIMEFLV_HOST}/perfil/{profile}/siguiendo?order=updated"
+
+            animes = {}
+            response = await self.get(url)
+            if response.status_code == 200:
+                html = response.text
+
+                soup = BeautifulSoup(html, 'html.parser')
+
+                ul = soup.find('ul', class_='ListAnimes')
+                lis = ul.find_all('li')
+
+
+
+
+                for li in lis:
+                    img = li.find('img')['src']
+
+                    a = li.find('div', class_="Title").find('strong').find('a')
+                    title = a.text.strip()
+                    href = a['href']
+                    data = {}
+                    data['title'] = title
+                    data['href'] = f"{ANIMEFLV_HOST}{href}"
+                    data['cover'] = f"{ANIMEFLV_HOST}{img}"
+
+                    key = href.replace('/anime/','')
+
+                    animes[key] = data
+
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+
+            for key in animes.keys():
+                anime = animes[key]
+                url = anime['href']
+
+                #url = f"https://www3.animeflv.net{href}"
+                response = await self.get(url)
+                if response.status_code == 200:
+                    html = response.text
+
+                    soup = BeautifulSoup(html, 'html.parser')
+                    status = soup.find('aside', class_="SidebarA").find('p', class_="AnmStts").find('span').text
+
+                    inEmission = status == 'En emision'
+
+                    jsSentence = "var episodes = "
+                    init = html.find(jsSentence, 0)
+                    semiColon = html.find(";", init)
+
+                    line = html[init + len(jsSentence) + 1 : semiColon - 1]
+                    parts = line.split(",")
+                    episodesCount = int(len(parts) / 2)
+
+                    #last episode seen
+                    jsSentence = "var last_seen = "
+                    init = html.find(jsSentence, 0)
+                    semiColon = html.find(";", init)
+
+                    lastSeen = int(html[init + len(jsSentence) : semiColon])
+
+                    #episodeList > li:nth-child(6) > a
+                    nextToWatch = None
+                    if lastSeen < episodesCount:
+                        part = url.split("/")[-1]
+                        nextToWatch = ANIMEFLV_HOST + "/ver/" + part + "-" + str(lastSeen + 1)
+
+                    #in emission
+                    #var anime_info = ["3423","Dr. Stone: Stone Wars","dr-stone-stone-wars","2021-01-28"];
+
+                    nextEpisode = None
+                    if inEmission:
+                        jsSentence = "var anime_info = "
+                        init = html.find(jsSentence, 0)
+                        semiColon = html.find(";", init)
+
+                        line = html[init + len(jsSentence) + 1 : semiColon - 1]
+                        parts = line.split(',"')
+                        if len(parts) >= 4:
+                            nextEpisode = parts[3].replace('"','')
+
+
+                    #description
+                    #body > div.Wrapper > div > div > div.Container > div > main > section:nth-child(1) > div.Description > p
+                    description = soup.find('div', class_="Description").find('p').text
+
+                    anime['lastSeen'] = lastSeen
+                    anime['episodesCount'] = episodesCount
+                    anime['inEmission'] = inEmission
+                    anime['nextEpisode'] = nextEpisode
+                    anime['progress'] = round(lastSeen / episodesCount * 100, 2)
+                    anime['today'] = nextEpisode == today
+                    anime["nextToWatch"] = nextToWatch
+                    anime["description"] = description
+
+        self._animes = animes
+        await self.async_logout()
+        return animes
+
+    def getProfile(self) -> str:
+        return self.__profile
+
+    def getAnimesCount(self) -> int:
+        return len(self._animes.keys())
+
+    def getAnimesList(self) -> dict:
+        return self._animes
 
     async def async_set_title(self, value: str) -> any:
         """Get data from the API."""
