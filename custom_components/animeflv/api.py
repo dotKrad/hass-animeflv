@@ -210,24 +210,6 @@ class AnimeFlvApiClient:
         await self.async_logout()
         return animes
 
-    def getProfile(self) -> str:
-        return self.__profile
-
-    def getAnimesCount(self) -> int:
-        return len(self._animes.keys())
-
-    def getAnimesList(self) -> dict:
-        return self._animes
-
-    async def async_set_title(self, value: str) -> any:
-        """Get data from the API."""
-        return await self._api_wrapper(
-            method="patch",
-            url="https://jsonplaceholder.typicode.com/posts/1",
-            data={"title": value},
-            headers={"Content-type": "application/json; charset=UTF-8"},
-        )
-
     async def _api_wrapper(
         self,
         method: str,

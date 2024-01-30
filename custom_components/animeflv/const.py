@@ -5,8 +5,8 @@ LOGGER: Logger = getLogger(__package__)
 
 NAME = "AnimeFLV"
 DOMAIN = "animeflv"
-VERSION = "0.0.0"
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
+VERSION = "0.0.1"
+ATTRIBUTION = "Data provided by https://www3.animeflv.net"
 
 
 DEFAULT_CONF_PASSWORD = ""
