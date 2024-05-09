@@ -110,21 +110,30 @@ class AnimeFlvApiClient:
         await self.async_login()
 
         profile = self._profile
-        if profile != "":
-            url = f"{ANIMEFLV_HOST}/perfil/{profile}/siguiendo?order=updated"
 
+        page = 1
+        totalPages = 0
+        if profile != "":
             animes = {}
-            response = await self.get(url)
-            if response.status_code == 200:
+            while totalPages == 0 or page <= totalPages:
+                url = f"{ANIMEFLV_HOST}/perfil/{profile}/siguiendo??order=title&page={page}"
+                response = await self.get(url)
+                if response.status_code != 200:
+                    totalPages = -1
+                    break
+
                 html = response.text
 
                 soup = BeautifulSoup(html, 'html.parser')
+                if totalPages == 0:
+                    #read if more pages
+                    pagination = soup.find('ul', class_='pagination')
+                    pagesLi = pagination.find_all('li')
+                    totalPages = len(pagesLi) - 2
 
+                page += 1
                 ul = soup.find('ul', class_='ListAnimes')
                 lis = ul.find_all('li')
-
-
-
 
                 for li in lis:
                     img = li.find('img')['src']
