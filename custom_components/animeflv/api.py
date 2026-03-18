@@ -107,119 +107,146 @@ class AnimeFlvApiClient:
     async def async_get_data(self) -> any:
 
         await self.async_login()
+        try:
+            profile = self._profile
+            animes = {}
 
-        profile = self._profile
-        animes = {}
+            page = 1
+            totalPages = 0
+            if profile != "":
+                while totalPages == 0 or page <= totalPages:
+                    url = f"{ANIMEFLV_HOST}/perfil/{profile}/siguiendo?order=title&page={page}"
+                    response = await self.get(url)
+                    if response.status_code != 200:
+                        totalPages = -1
+                        break
 
-        page = 1
-        totalPages = 0
-        if profile != "":
-            while totalPages == 0 or page <= totalPages:
-                url = f"{ANIMEFLV_HOST}/perfil/{profile}/siguiendo?order=title&page={page}"
-                response = await self.get(url)
-                if response.status_code != 200:
-                    totalPages = -1
-                    break
-
-                html = response.text
-
-                soup = BeautifulSoup(html, 'html.parser')
-                if totalPages == 0:
-                    # read if more pages
-                    pagination = soup.find('ul', class_='pagination')
-                    pagesLi = pagination.find_all('li')
-                    totalPages = len(pagesLi) - 2
-
-                page += 1
-                ul = soup.find('ul', class_='ListAnimes')
-                lis = ul.find_all('li')
-
-                for li in lis:
-                    img = li.find('img')['src']
-
-                    a = li.find('div', class_="Title").find('strong').find('a')
-                    title = a.text.strip()
-                    href = a['href']
-                    data = {}
-                    data['title'] = title
-                    data['href'] = f"{ANIMEFLV_HOST}{href}"
-                    data['cover'] = f"{ANIMEFLV_HOST}{img}"
-
-                    key = href.replace('/anime/', '')
-
-                    animes[key] = data
-
-            today = datetime.datetime.now().strftime("%Y-%m-%d")
-
-            for key in animes.keys():
-                anime = animes[key]
-                url = anime['href']
-
-                # url = f"https://www3.animeflv.net{href}"
-                response = await self.get(url)
-                if response.status_code == 200:
                     html = response.text
 
                     soup = BeautifulSoup(html, 'html.parser')
-                    status = soup.find('aside', class_="SidebarA").find(
-                        'p', class_="AnmStts").find('span').text
+                    if totalPages == 0:
+                        # read if more pages
+                        pagination = soup.find('ul', class_='pagination')
+                        if pagination is not None:
+                            pagesLi = pagination.find_all('li')
+                            totalPages = max(len(pagesLi) - 2, 1)
+                        else:
+                            totalPages = 1
 
-                    inEmission = status == 'En emision'
+                    page += 1
+                    ul = soup.find('ul', class_='ListAnimes')
+                    if ul is None:
+                        continue
 
-                    jsSentence = "var episodes = "
-                    init = html.find(jsSentence, 0)
-                    semiColon = html.find(";", init)
+                    lis = ul.find_all('li')
 
-                    line = html[init + len(jsSentence) + 1: semiColon - 1]
-                    parts = line.split(",")
-                    episodesCount = int(len(parts) / 2)
+                    for li in lis:
+                        img_tag = li.find('img')
+                        title_div = li.find('div', class_="Title")
+                        strong_tag = title_div.find(
+                            'strong') if title_div else None
+                        a = strong_tag.find('a') if strong_tag else None
+                        if img_tag is None or a is None:
+                            continue
 
-                    # last episode seen
-                    jsSentence = "var last_seen = "
-                    init = html.find(jsSentence, 0)
-                    semiColon = html.find(";", init)
+                        img = img_tag.get('src')
+                        href = a.get('href')
+                        if not img or not href:
+                            continue
 
-                    lastSeen = int(html[init + len(jsSentence): semiColon])
+                        title = a.text.strip()
+                        data = {}
+                        data['title'] = title
+                        data['href'] = f"{ANIMEFLV_HOST}{href}"
+                        data['cover'] = f"{ANIMEFLV_HOST}{img}"
 
-                    # episodeList > li:nth-child(6) > a
-                    nextToWatch = None
-                    if lastSeen < episodesCount:
-                        part = url.split("/")[-1]
-                        nextToWatch = ANIMEFLV_HOST + "/ver/" + \
-                            part + "-" + str(lastSeen + 1)
+                        key = href.replace('/anime/', '')
 
-                    # in emission
-                    # var anime_info = ["3423","Dr. Stone: Stone Wars","dr-stone-stone-wars","2021-01-28"];
+                        animes[key] = data
 
-                    nextEpisode = None
-                    if inEmission:
-                        jsSentence = "var anime_info = "
+                today = datetime.datetime.now().strftime("%Y-%m-%d")
+
+                for key in animes.keys():
+                    anime = animes[key]
+                    url = anime['href']
+
+                    # url = f"https://www3.animeflv.net{href}"
+                    response = await self.get(url)
+                    if response.status_code == 200:
+                        html = response.text
+
+                        soup = BeautifulSoup(html, 'html.parser')
+                        sidebar = soup.find('aside', class_="SidebarA")
+                        status_p = sidebar.find(
+                            'p', class_="AnmStts") if sidebar else None
+                        status_span = status_p.find(
+                            'span') if status_p else None
+                        if status_span is None:
+                            continue
+
+                        status = status_span.text
+
+                        inEmission = status == 'En emision'
+
+                        jsSentence = "var episodes = "
                         init = html.find(jsSentence, 0)
                         semiColon = html.find(";", init)
 
                         line = html[init + len(jsSentence) + 1: semiColon - 1]
-                        parts = line.split(',"')
-                        if len(parts) >= 4:
-                            nextEpisode = parts[3].replace('"', '')
+                        parts = line.split(",")
+                        episodesCount = int(len(parts) / 2)
 
-                    # description
-                    # body > div.Wrapper > div > div > div.Container > div > main > section:nth-child(1) > div.Description > p
-                    description = soup.find(
-                        'div', class_="Description").find('p').text
+                        # last episode seen
+                        jsSentence = "var last_seen = "
+                        init = html.find(jsSentence, 0)
+                        semiColon = html.find(";", init)
 
-                    anime['lastSeen'] = lastSeen
-                    anime['episodesCount'] = episodesCount
-                    anime['inEmission'] = inEmission
-                    anime['nextEpisode'] = nextEpisode
-                    anime['progress'] = round(
-                        lastSeen / episodesCount * 100, 2) if episodesCount > 0 else 0
-                    anime['today'] = nextEpisode == today
-                    anime["nextToWatch"] = nextToWatch
-                    anime["description"] = description
+                        lastSeen = int(html[init + len(jsSentence): semiColon])
 
-        self._animes = animes
-        await self.async_logout()
-        return animes
+                        # episodeList > li:nth-child(6) > a
+                        nextToWatch = None
+                        if lastSeen < episodesCount:
+                            part = url.split("/")[-1]
+                            nextToWatch = ANIMEFLV_HOST + "/ver/" + \
+                                part + "-" + str(lastSeen + 1)
+
+                        # in emission
+                        # var anime_info = ["3423","Dr. Stone: Stone Wars","dr-stone-stone-wars","2021-01-28"];
+
+                        nextEpisode = None
+                        if inEmission:
+                            jsSentence = "var anime_info = "
+                            init = html.find(jsSentence, 0)
+                            semiColon = html.find(";", init)
+
+                            line = html[init +
+                                        len(jsSentence) + 1: semiColon - 1]
+                            parts = line.split(',"')
+                            if len(parts) >= 4:
+                                nextEpisode = parts[3].replace('"', '')
+
+                        # description
+                        # body > div.Wrapper > div > div > div.Container > div > main > section:nth-child(1) > div.Description > p
+                        description_div = soup.find(
+                            'div', class_="Description")
+                        description_p = description_div.find(
+                            'p') if description_div else None
+                        description = description_p.text if description_p else ""
+
+                        anime['lastSeen'] = lastSeen
+                        anime['episodesCount'] = episodesCount
+                        anime['inEmission'] = inEmission
+                        anime['nextEpisode'] = nextEpisode
+                        anime['progress'] = round(
+                            lastSeen / episodesCount * 100, 2) if episodesCount > 0 else 0
+                        anime['today'] = nextEpisode == today
+                        anime["nextToWatch"] = nextToWatch
+                        anime["description"] = description
+
+            self._animes = animes
+            return animes
+        finally:
+            await self.async_logout()
 
     async def _api_wrapper(
         self,
