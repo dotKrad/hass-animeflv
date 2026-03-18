@@ -212,7 +212,7 @@ class AnimeFlvApiClient:
                     anime['inEmission'] = inEmission
                     anime['nextEpisode'] = nextEpisode
                     anime['progress'] = round(
-                        lastSeen / episodesCount * 100, 2)
+                        lastSeen / episodesCount * 100, 2) if episodesCount > 0 else 0
                     anime['today'] = nextEpisode == today
                     anime["nextToWatch"] = nextToWatch
                     anime["description"] = description
