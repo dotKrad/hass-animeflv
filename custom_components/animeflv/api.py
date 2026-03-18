@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from functools import partial
+from typing import Any
 
 import datetime
 import cloudscraper
@@ -44,11 +45,11 @@ class AnimeFlvApiClient:
         self._username = username
         self._password = password
         self._hass = hass
-        self._session = None
-        self._profile = None
-        self._animes = {}
+        self._session: Any | None = None
+        self._profile: str | None = None
+        self._animes: dict[str, dict[str, Any]] = {}
 
-    async def _getSession(self) -> any:
+    async def _get_session(self) -> Any:
         if self._session is None:
 
             self._session = await self._hass.async_add_executor_job(cloudscraper.create_scraper,
@@ -62,14 +63,19 @@ class AnimeFlvApiClient:
 
         return self._session
 
-    async def post(self, url, data) -> any:
+    async def post(self, url: str, data: dict[str, Any]) -> Any:
         return await self._request_with_retries("post", url, data)
 
-    async def get(self, url) -> any:
+    async def get(self, url: str) -> Any:
         return await self._request_with_retries("get", url)
 
-    async def _request_with_retries(self, method: str, url: str, data=None) -> any:
-        session = await self._getSession()
+    async def _request_with_retries(
+        self,
+        method: str,
+        url: str,
+        data: dict[str, Any] | None = None,
+    ) -> Any:
+        session = await self._get_session()
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
@@ -95,7 +101,7 @@ class AnimeFlvApiClient:
                     ) from exception
                 await asyncio.sleep(2 ** (attempt - 1))
 
-    async def async_login(self) -> any:
+    async def async_login(self) -> str:
         await self.async_logout()
         # https://www4.animeflv.net/auth/sign_in
         url = f"{ANIMEFLV_HOST}/auth/sign_in"
@@ -121,13 +127,13 @@ class AnimeFlvApiClient:
         self._profile = profile
         return profile
 
-    async def async_logout(self):
+    async def async_logout(self) -> None:
         url = f"{ANIMEFLV_HOST}/auth/sign_out"
-        response = await self.get(url)
+        await self.get(url)
         # if response.status_code == 200:
         #    html = response.text
 
-    async def async_get_data(self) -> any:
+    async def async_get_data(self) -> dict[str, dict[str, Any]]:
 
         await self.async_login()
         try:
