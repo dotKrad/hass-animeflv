@@ -3,10 +3,6 @@ from __future__ import annotations
 
 import asyncio
 from functools import partial
-import socket
-
-import aiohttp
-import async_timeout
 
 import datetime
 import cloudscraper
@@ -287,39 +283,3 @@ class AnimeFlvApiClient:
             return animes
         finally:
             await self.async_logout()
-
-    async def _api_wrapper(
-        self,
-        method: str,
-        url: str,
-        data: dict | None = None,
-        headers: dict | None = None,
-    ) -> any:
-        """Get information from the API."""
-        try:
-            async with async_timeout.timeout(10):
-                response = await self._session.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    json=data,
-                )
-                if response.status in (401, 403):
-                    raise AnimeFlvApiClientAuthenticationError(
-                        "Invalid credentials",
-                    )
-                response.raise_for_status()
-                return await response.json()
-
-        except asyncio.TimeoutError as exception:
-            raise AnimeFlvApiClientCommunicationError(
-                "Timeout error fetching information",
-            ) from exception
-        except (aiohttp.ClientError, socket.gaierror) as exception:
-            raise AnimeFlvApiClientCommunicationError(
-                "Error fetching information",
-            ) from exception
-        except Exception as exception:  # pylint: disable=broad-except
-            raise AnimeFlvApiClientError(
-                "Something really wrong happened!"
-            ) from exception
