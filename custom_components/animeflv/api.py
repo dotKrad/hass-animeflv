@@ -27,7 +27,9 @@ class AnimeFlvApiClientAuthenticationError(
 ):
     """Exception to indicate an authentication error."""
 
-ANIMEFLV_HOST = "https://www3.animeflv.net"
+
+ANIMEFLV_HOST = "https://www4.animeflv.net"
+
 
 class AnimeFlvApiClient:
     """Sample API Client."""
@@ -46,18 +48,17 @@ class AnimeFlvApiClient:
         self._profile = None
         self._animes = {}
 
-
     async def _getSession(self) -> any:
         if self._session is None:
 
             self._session = await self._hass.async_add_executor_job(cloudscraper.create_scraper,
-                {
-                        'browser': 'firefox',
-                        'platform': 'android',
-                        #'mobile': False
-                        'desktop' : False
-                }
-            )
+                                                                    {
+                                                                        'browser': 'firefox',
+                                                                        'platform': 'android',
+                                                                        # 'mobile': False
+                                                                        'desktop': False
+                                                                    }
+                                                                    )
 
         return self._session
 
@@ -73,21 +74,22 @@ class AnimeFlvApiClient:
 
     async def async_login(self) -> any:
         await self.async_logout()
+        # https://www4.animeflv.net/auth/sign_in
         url = f"{ANIMEFLV_HOST}/auth/sign_in"
         data = {
-			"email" : self._username,
-			"password" : self._password,
-			"remember_me" : "1"
-		}
+            "email": self._username,
+            "password": self._password,
+            "remember_me": "1"
+        }
 
         response = await self.post(url, data)
         if response.status_code != 200:
             raise AnimeFlvApiClientAuthenticationError("Invalid credentials")
 
         html = response.text
-        startProfile = int(html.find("perfil",0, len(html)))
+        startProfile = int(html.find("perfil", 0, len(html)))
 
-        if(startProfile <= 0): #profile not found
+        if (startProfile <= 0):  # profile not found
             raise AnimeFlvApiClientAuthenticationError("Invalid credentials")
 
         endProfile = int(html.find('"', startProfile, len(html)))
@@ -97,13 +99,10 @@ class AnimeFlvApiClient:
         return profile
 
     async def async_logout(self):
-        url = f"{ANIMEFLV_HOST}/auth/sign_out";
+        url = f"{ANIMEFLV_HOST}/auth/sign_out"
         response = await self.get(url)
-        #if response.status_code == 200:
+        # if response.status_code == 200:
         #    html = response.text
-
-
-
 
     async def async_get_data(self) -> any:
 
@@ -126,7 +125,7 @@ class AnimeFlvApiClient:
 
                 soup = BeautifulSoup(html, 'html.parser')
                 if totalPages == 0:
-                    #read if more pages
+                    # read if more pages
                     pagination = soup.find('ul', class_='pagination')
                     pagesLi = pagination.find_all('li')
                     totalPages = len(pagesLi) - 2
@@ -146,7 +145,7 @@ class AnimeFlvApiClient:
                     data['href'] = f"{ANIMEFLV_HOST}{href}"
                     data['cover'] = f"{ANIMEFLV_HOST}{img}"
 
-                    key = href.replace('/anime/','')
+                    key = href.replace('/anime/', '')
 
                     animes[key] = data
 
@@ -156,13 +155,14 @@ class AnimeFlvApiClient:
                 anime = animes[key]
                 url = anime['href']
 
-                #url = f"https://www3.animeflv.net{href}"
+                # url = f"https://www3.animeflv.net{href}"
                 response = await self.get(url)
                 if response.status_code == 200:
                     html = response.text
 
                     soup = BeautifulSoup(html, 'html.parser')
-                    status = soup.find('aside', class_="SidebarA").find('p', class_="AnmStts").find('span').text
+                    status = soup.find('aside', class_="SidebarA").find(
+                        'p', class_="AnmStts").find('span').text
 
                     inEmission = status == 'En emision'
 
@@ -170,25 +170,26 @@ class AnimeFlvApiClient:
                     init = html.find(jsSentence, 0)
                     semiColon = html.find(";", init)
 
-                    line = html[init + len(jsSentence) + 1 : semiColon - 1]
+                    line = html[init + len(jsSentence) + 1: semiColon - 1]
                     parts = line.split(",")
                     episodesCount = int(len(parts) / 2)
 
-                    #last episode seen
+                    # last episode seen
                     jsSentence = "var last_seen = "
                     init = html.find(jsSentence, 0)
                     semiColon = html.find(";", init)
 
-                    lastSeen = int(html[init + len(jsSentence) : semiColon])
+                    lastSeen = int(html[init + len(jsSentence): semiColon])
 
-                    #episodeList > li:nth-child(6) > a
+                    # episodeList > li:nth-child(6) > a
                     nextToWatch = None
                     if lastSeen < episodesCount:
                         part = url.split("/")[-1]
-                        nextToWatch = ANIMEFLV_HOST + "/ver/" + part + "-" + str(lastSeen + 1)
+                        nextToWatch = ANIMEFLV_HOST + "/ver/" + \
+                            part + "-" + str(lastSeen + 1)
 
-                    #in emission
-                    #var anime_info = ["3423","Dr. Stone: Stone Wars","dr-stone-stone-wars","2021-01-28"];
+                    # in emission
+                    # var anime_info = ["3423","Dr. Stone: Stone Wars","dr-stone-stone-wars","2021-01-28"];
 
                     nextEpisode = None
                     if inEmission:
@@ -196,21 +197,22 @@ class AnimeFlvApiClient:
                         init = html.find(jsSentence, 0)
                         semiColon = html.find(";", init)
 
-                        line = html[init + len(jsSentence) + 1 : semiColon - 1]
+                        line = html[init + len(jsSentence) + 1: semiColon - 1]
                         parts = line.split(',"')
                         if len(parts) >= 4:
-                            nextEpisode = parts[3].replace('"','')
+                            nextEpisode = parts[3].replace('"', '')
 
-
-                    #description
-                    #body > div.Wrapper > div > div > div.Container > div > main > section:nth-child(1) > div.Description > p
-                    description = soup.find('div', class_="Description").find('p').text
+                    # description
+                    # body > div.Wrapper > div > div > div.Container > div > main > section:nth-child(1) > div.Description > p
+                    description = soup.find(
+                        'div', class_="Description").find('p').text
 
                     anime['lastSeen'] = lastSeen
                     anime['episodesCount'] = episodesCount
                     anime['inEmission'] = inEmission
                     anime['nextEpisode'] = nextEpisode
-                    anime['progress'] = round(lastSeen / episodesCount * 100, 2)
+                    anime['progress'] = round(
+                        lastSeen / episodesCount * 100, 2)
                     anime['today'] = nextEpisode == today
                     anime["nextToWatch"] = nextToWatch
                     anime["description"] = description
