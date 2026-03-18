@@ -109,11 +109,11 @@ class AnimeFlvApiClient:
         await self.async_login()
 
         profile = self._profile
+        animes = {}
 
         page = 1
         totalPages = 0
         if profile != "":
-            animes = {}
             while totalPages == 0 or page <= totalPages:
                 url = f"{ANIMEFLV_HOST}/perfil/{profile}/siguiendo??order=title&page={page}"
                 response = await self.get(url)
