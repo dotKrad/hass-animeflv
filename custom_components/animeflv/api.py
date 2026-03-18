@@ -190,7 +190,11 @@ class AnimeFlvApiClient:
 
                         jsSentence = "var episodes = "
                         init = html.find(jsSentence, 0)
+                        if init < 0:
+                            continue
                         semiColon = html.find(";", init)
+                        if semiColon < 0:
+                            continue
 
                         line = html[init + len(jsSentence) + 1: semiColon - 1]
                         parts = line.split(",")
@@ -199,9 +203,17 @@ class AnimeFlvApiClient:
                         # last episode seen
                         jsSentence = "var last_seen = "
                         init = html.find(jsSentence, 0)
+                        if init < 0:
+                            continue
                         semiColon = html.find(";", init)
+                        if semiColon < 0:
+                            continue
 
-                        lastSeen = int(html[init + len(jsSentence): semiColon])
+                        try:
+                            lastSeen = int(
+                                html[init + len(jsSentence): semiColon])
+                        except ValueError:
+                            continue
 
                         # episodeList > li:nth-child(6) > a
                         nextToWatch = None
@@ -217,13 +229,14 @@ class AnimeFlvApiClient:
                         if inEmission:
                             jsSentence = "var anime_info = "
                             init = html.find(jsSentence, 0)
-                            semiColon = html.find(";", init)
-
-                            line = html[init +
-                                        len(jsSentence) + 1: semiColon - 1]
-                            parts = line.split(',"')
-                            if len(parts) >= 4:
-                                nextEpisode = parts[3].replace('"', '')
+                            if init >= 0:
+                                semiColon = html.find(";", init)
+                                if semiColon >= 0:
+                                    line = html[init +
+                                                len(jsSentence) + 1: semiColon - 1]
+                                    parts = line.split(',"')
+                                    if len(parts) >= 4:
+                                        nextEpisode = parts[3].replace('"', '')
 
                         # description
                         # body > div.Wrapper > div > div > div.Container > div > main > section:nth-child(1) > div.Description > p
