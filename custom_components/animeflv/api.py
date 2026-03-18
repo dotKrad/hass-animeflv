@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 import socket
 
 import aiohttp
@@ -29,6 +30,9 @@ class AnimeFlvApiClientAuthenticationError(
 
 
 ANIMEFLV_HOST = "https://www4.animeflv.net"
+REQUEST_TIMEOUT = 15
+MAX_RETRIES = 3
+RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 class AnimeFlvApiClient:
@@ -63,14 +67,37 @@ class AnimeFlvApiClient:
         return self._session
 
     async def post(self, url, data) -> any:
-        session = await self._getSession()
-        response = await self._hass.async_add_executor_job(session.post, url, data)
-        return response
+        return await self._request_with_retries("post", url, data)
 
     async def get(self, url) -> any:
+        return await self._request_with_retries("get", url)
+
+    async def _request_with_retries(self, method: str, url: str, data=None) -> any:
         session = await self._getSession()
-        response = await self._hass.async_add_executor_job(session.get, url)
-        return response
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                if method == "post":
+                    response = await self._hass.async_add_executor_job(
+                        partial(session.post, url, data=data,
+                                timeout=REQUEST_TIMEOUT),
+                    )
+                else:
+                    response = await self._hass.async_add_executor_job(
+                        partial(session.get, url, timeout=REQUEST_TIMEOUT),
+                    )
+
+                if response.status_code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
+                    await asyncio.sleep(2 ** (attempt - 1))
+                    continue
+
+                return response
+            except Exception as exception:  # pylint: disable=broad-except
+                if attempt >= MAX_RETRIES:
+                    raise AnimeFlvApiClientCommunicationError(
+                        "Error fetching information",
+                    ) from exception
+                await asyncio.sleep(2 ** (attempt - 1))
 
     async def async_login(self) -> any:
         await self.async_logout()
