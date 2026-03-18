@@ -30,6 +30,7 @@ ANIMEFLV_HOST = "https://www4.animeflv.net"
 REQUEST_TIMEOUT = 15
 MAX_RETRIES = 3
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+DETAIL_FETCH_CONCURRENCY = 5
 
 
 class AnimeFlvApiClient:
@@ -46,6 +47,7 @@ class AnimeFlvApiClient:
         self._password = password
         self._hass = hass
         self._session: Any | None = None
+        self._session_lock = asyncio.Lock()
         self._profile: str | None = None
         self._animes: dict[str, dict[str, Any]] = {}
 
@@ -79,15 +81,16 @@ class AnimeFlvApiClient:
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                if method == "post":
-                    response = await self._hass.async_add_executor_job(
-                        partial(session.post, url, data=data,
-                                timeout=REQUEST_TIMEOUT),
-                    )
-                else:
-                    response = await self._hass.async_add_executor_job(
-                        partial(session.get, url, timeout=REQUEST_TIMEOUT),
-                    )
+                async with self._session_lock:
+                    if method == "post":
+                        response = await self._hass.async_add_executor_job(
+                            partial(session.post, url, data=data,
+                                    timeout=REQUEST_TIMEOUT),
+                        )
+                    else:
+                        response = await self._hass.async_add_executor_job(
+                            partial(session.get, url, timeout=REQUEST_TIMEOUT),
+                        )
 
                 if response.status_code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
                     await asyncio.sleep(2 ** (attempt - 1))
@@ -194,96 +197,104 @@ class AnimeFlvApiClient:
                         animes[key] = data
 
                 today = datetime.datetime.now().strftime("%Y-%m-%d")
+                semaphore = asyncio.Semaphore(DETAIL_FETCH_CONCURRENCY)
 
-                for key in animes.keys():
-                    anime = animes[key]
+                async def _process_anime(anime: dict[str, Any]) -> None:
                     url = anime['href']
 
-                    # url = f"https://www3.animeflv.net{href}"
-                    response = await self.get(url)
-                    if response.status_code == 200:
-                        html = response.text
+                    async with semaphore:
+                        response = await self.get(url)
 
-                        soup = BeautifulSoup(html, 'html.parser')
-                        sidebar = soup.find('aside', class_="SidebarA")
-                        status_p = sidebar.find(
-                            'p', class_="AnmStts") if sidebar else None
-                        status_span = status_p.find(
-                            'span') if status_p else None
-                        if status_span is None:
-                            continue
+                    if response.status_code != 200:
+                        return
 
-                        status = status_span.text
+                    html = response.text
 
-                        inEmission = status == 'En emision'
+                    soup = BeautifulSoup(html, 'html.parser')
+                    sidebar = soup.find('aside', class_="SidebarA")
+                    status_p = sidebar.find(
+                        'p', class_="AnmStts") if sidebar else None
+                    status_span = status_p.find(
+                        'span') if status_p else None
+                    if status_span is None:
+                        return
 
-                        jsSentence = "var episodes = "
+                    status = status_span.text
+
+                    inEmission = status == 'En emision'
+
+                    jsSentence = "var episodes = "
+                    init = html.find(jsSentence, 0)
+                    if init < 0:
+                        return
+                    semiColon = html.find(";", init)
+                    if semiColon < 0:
+                        return
+
+                    line = html[init + len(jsSentence) + 1: semiColon - 1]
+                    parts = line.split(",")
+                    episodesCount = int(len(parts) / 2)
+
+                    # last episode seen
+                    jsSentence = "var last_seen = "
+                    init = html.find(jsSentence, 0)
+                    if init < 0:
+                        return
+                    semiColon = html.find(";", init)
+                    if semiColon < 0:
+                        return
+
+                    try:
+                        lastSeen = int(
+                            html[init + len(jsSentence): semiColon])
+                    except ValueError:
+                        return
+
+                    # episodeList > li:nth-child(6) > a
+                    nextToWatch = None
+                    if lastSeen < episodesCount:
+                        part = url.split("/")[-1]
+                        nextToWatch = ANIMEFLV_HOST + "/ver/" + \
+                            part + "-" + str(lastSeen + 1)
+
+                    # in emission
+                    # var anime_info = ["3423","Dr. Stone: Stone Wars","dr-stone-stone-wars","2021-01-28"];
+
+                    nextEpisode = None
+                    if inEmission:
+                        jsSentence = "var anime_info = "
                         init = html.find(jsSentence, 0)
-                        if init < 0:
-                            continue
-                        semiColon = html.find(";", init)
-                        if semiColon < 0:
-                            continue
+                        if init >= 0:
+                            semiColon = html.find(";", init)
+                            if semiColon >= 0:
+                                line = html[init +
+                                            len(jsSentence) + 1: semiColon - 1]
+                                parts = line.split(',"')
+                                if len(parts) >= 4:
+                                    nextEpisode = parts[3].replace('"', '')
 
-                        line = html[init + len(jsSentence) + 1: semiColon - 1]
-                        parts = line.split(",")
-                        episodesCount = int(len(parts) / 2)
+                    # description
+                    # body > div.Wrapper > div > div > div.Container > div > main > section:nth-child(1) > div.Description > p
+                    description_div = soup.find(
+                        'div', class_="Description")
+                    description_p = description_div.find(
+                        'p') if description_div else None
+                    description = description_p.text if description_p else ""
 
-                        # last episode seen
-                        jsSentence = "var last_seen = "
-                        init = html.find(jsSentence, 0)
-                        if init < 0:
-                            continue
-                        semiColon = html.find(";", init)
-                        if semiColon < 0:
-                            continue
+                    anime['lastSeen'] = lastSeen
+                    anime['episodesCount'] = episodesCount
+                    anime['inEmission'] = inEmission
+                    anime['nextEpisode'] = nextEpisode
+                    anime['progress'] = round(
+                        lastSeen / episodesCount * 100, 2) if episodesCount > 0 else 0
+                    anime['today'] = nextEpisode == today
+                    anime["nextToWatch"] = nextToWatch
+                    anime["description"] = description
 
-                        try:
-                            lastSeen = int(
-                                html[init + len(jsSentence): semiColon])
-                        except ValueError:
-                            continue
-
-                        # episodeList > li:nth-child(6) > a
-                        nextToWatch = None
-                        if lastSeen < episodesCount:
-                            part = url.split("/")[-1]
-                            nextToWatch = ANIMEFLV_HOST + "/ver/" + \
-                                part + "-" + str(lastSeen + 1)
-
-                        # in emission
-                        # var anime_info = ["3423","Dr. Stone: Stone Wars","dr-stone-stone-wars","2021-01-28"];
-
-                        nextEpisode = None
-                        if inEmission:
-                            jsSentence = "var anime_info = "
-                            init = html.find(jsSentence, 0)
-                            if init >= 0:
-                                semiColon = html.find(";", init)
-                                if semiColon >= 0:
-                                    line = html[init +
-                                                len(jsSentence) + 1: semiColon - 1]
-                                    parts = line.split(',"')
-                                    if len(parts) >= 4:
-                                        nextEpisode = parts[3].replace('"', '')
-
-                        # description
-                        # body > div.Wrapper > div > div > div.Container > div > main > section:nth-child(1) > div.Description > p
-                        description_div = soup.find(
-                            'div', class_="Description")
-                        description_p = description_div.find(
-                            'p') if description_div else None
-                        description = description_p.text if description_p else ""
-
-                        anime['lastSeen'] = lastSeen
-                        anime['episodesCount'] = episodesCount
-                        anime['inEmission'] = inEmission
-                        anime['nextEpisode'] = nextEpisode
-                        anime['progress'] = round(
-                            lastSeen / episodesCount * 100, 2) if episodesCount > 0 else 0
-                        anime['today'] = nextEpisode == today
-                        anime["nextToWatch"] = nextToWatch
-                        anime["description"] = description
+                await asyncio.gather(
+                    *(_process_anime(anime) for anime in animes.values()),
+                    return_exceptions=True,
+                )
 
             self._animes = animes
             return animes
