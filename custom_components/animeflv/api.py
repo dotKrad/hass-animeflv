@@ -115,7 +115,7 @@ class AnimeFlvApiClient:
         totalPages = 0
         if profile != "":
             while totalPages == 0 or page <= totalPages:
-                url = f"{ANIMEFLV_HOST}/perfil/{profile}/siguiendo??order=title&page={page}"
+                url = f"{ANIMEFLV_HOST}/perfil/{profile}/siguiendo?order=title&page={page}"
                 response = await self.get(url)
                 if response.status_code != 200:
                     totalPages = -1
